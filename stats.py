@@ -3,7 +3,7 @@ __author__ = 'florian'
 import sqlite3
 import csv
 import sys
-
+import datetime
 import argparse
 
 parser = argparse.ArgumentParser(description="Transforms exported SQLite database of the mobile app SettleUp "
@@ -84,8 +84,8 @@ for payment in pc:
     howMuchForWho = {m: 0.0 for m in members.keys()}
 
     purpose = payment['purpose']
-    # TODO: transform timestamp into something useful
-    date = payment['created']
+
+    date = datetime.datetime.fromtimestamp(int(payment['created'])/1000).strftime('%Y-%m-%d %H:%M:%S')
 
     forWho = [int(i) for i in payment['for_who'].split(' ')]
     weights = [float(i) for i in payment['weights'].split(' ')]
