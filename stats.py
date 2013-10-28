@@ -4,10 +4,23 @@ import sqlite3
 import csv
 import sys
 
-groupName = 'Rasselbande'
-outputCurrency = 'USD'
+import argparse
 
-conn = sqlite3.connect("data/export.sqlite")
+parser = argparse.ArgumentParser(description="Transforms exported SQLite database of the mobile app SettleUp "
+                                             "into CSV for evaluating tracked expenses.")
+parser.add_argument('--sqlite-file', required=True,
+                    help='the sqlite file that was exported from SettleUp')
+parser.add_argument('--group-name', required=True,
+                    help='the name of the SettleUp group that shall be regarded')
+parser.add_argument('--currency', required=True,
+                    help='the currency code for the monetary amounts in the output CSV')
+
+args = vars(parser.parse_args())
+
+groupName = args['group_name']
+outputCurrency = args['currency']
+
+conn = sqlite3.connect(args['sqlite_file'])
 conn.row_factory = sqlite3.Row
 
 # GET CURRENCIES
@@ -20,10 +33,15 @@ mcu.execute("""
 currencies = [{k: c[k] for k in c.keys()} for c in mcu.fetchall()]
 
 if not list(filter(lambda c: c['code'] == outputCurrency, currencies)):
-    raise ValueError("output currency {} not available, only {}".format(outputCurrency, list(map(lambda c: c['code'], currencies))))
+    raise ValueError(
+        "output currency {} not available, only {}".format(outputCurrency, list(map(lambda c: c['code'], currencies))))
 
-# TODO: continue here
+outputCurrencyExchangeRate, = filter(lambda c: c['code'] == outputCurrency, currencies)
+outputCurrencyExchangeRate = outputCurrencyExchangeRate['exchange_rate']
+
 exchangeRateInOutputCurrency = {}
+for c in currencies:
+    exchangeRateInOutputCurrency[c['code']] = c['exchange_rate'] / outputCurrencyExchangeRate
 
 
 # GET MEMBERS
@@ -39,13 +57,14 @@ members = {}
 for m in mc:
     members[m['_id']] = m['name']
 
-print(members)
+if not members:
+    raise argparse.ArgumentError('no members for group ' + groupName)
 
 # CSV HEADERS
 
 #with open('payments.csv', 'wb') as csvFile:
-writer = csv.writer(sys.stdout, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-writer.writerow(['purpose', 'date'] + list(members.values()))
+writer = csv.writer(sys.stdout, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+writer.writerow(['purpose', 'date', 'full amount ({})'.format(outputCurrency)] + list(members.values()))
 
 
 # GET PAYMENTS
@@ -55,7 +74,6 @@ pc.execute('''
 SELECT p._id, p.for_who, p.amount, p.weights, p.purpose, p.created, p.currency, p.transfer
 FROM payments AS p INNER JOIN groups AS g ON p.group_id = g._id
 WHERE g.name = ?''', [groupName])
-
 
 for payment in pc:
     # omit transfers, they are not expenses
@@ -73,9 +91,10 @@ for payment in pc:
     weights = [float(i) for i in payment['weights'].split(' ')]
     # sum amount since multiple people could have paid
     amount = sum([float(i) for i in payment['amount'].split(' ')])
-    amountInOutputCurrency = amount * exchangeRateInOutputCurrency[payment['currency']]
+    amountInOutputCurrency = amount / exchangeRateInOutputCurrency[payment['currency']]
 
-    for i,benefitor in enumerate(forWho):
+    for i, benefitor in enumerate(forWho):
         howMuchForWho[benefitor] = weights[i] / sum(weights) * amountInOutputCurrency
 
-    writer.writerow([purpose, date] + list(howMuchForWho.values()))
+    writer.writerow([purpose, date, amountInOutputCurrency] +
+                    list(howMuchForWho.values()))
