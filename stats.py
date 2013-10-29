@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 __author__ = 'florian'
 
 import sqlite3
@@ -9,18 +10,19 @@ import argparse
 parser = argparse.ArgumentParser(description="Transforms exported SQLite database of the mobile app SettleUp "
                                              "into CSV for evaluating tracked expenses.")
 parser.add_argument('--sqlite-file', required=True,
-                    help='the sqlite file that was exported from SettleUp')
+                    help='the sqlite file that was exported from SettleUp', type=argparse.FileType('rb'))
 parser.add_argument('--group-name', required=True,
                     help='the name of the SettleUp group that shall be regarded')
 parser.add_argument('--currency', required=True,
                     help='the currency code for the monetary amounts in the output CSV')
 
-args = vars(parser.parse_args())
+args = parser.parse_args()
 
-groupName = args['group_name']
-outputCurrency = args['currency']
+groupName = args.group_name
 
-conn = sqlite3.connect(args['sqlite_file'])
+outputCurrency = args.currency
+
+conn = sqlite3.connect(args.sqlite_file.name)
 conn.row_factory = sqlite3.Row
 
 # GET CURRENCIES
